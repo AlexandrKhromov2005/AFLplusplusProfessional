@@ -1,39 +1,39 @@
 # AFLplusplusProfessional
 
-AFL++ 4.32c with an integrated **ML power scheduler** (`mlf-fuzz`).
+AFL++ 4.32c со встроенным **ML-планировщиком мутаций** (`mlf-fuzz`).
 
-The ML scheduler replaces AFL++'s default `calculate_score()` with a learned model that predicts how many mutations to assign to each queue entry. It trains online in the background while fuzzing — no pre-training required.
+ML-планировщик заменяет стандартный `calculate_score()` в AFL++ на обученную модель, которая предсказывает, сколько мутаций назначить каждому элементу очереди. Модель обучается онлайн в фоне во время фаззинга — предварительное обучение не требуется.
 
 ---
 
-## Architecture
+## Архитектура
 
 ```
 mlf-fuzz (C)                      ml_daemon (Python)
 ┌─────────────────────────┐       ┌──────────────────────────────┐
 │  calculate_score()      │──────▶│  SchedulerServer             │
-│  sends 16 float32       │  UNIX │  receives features           │
-│  features per queue     │  sock │  returns int32 energy        │
-│  entry (~64 bytes)      │◀──────│                              │
+│  отправляет 16 float32  │  UNIX │  принимает признаки          │
+│  признаков на элемент   │  sock │  возвращает int32 energy     │
+│  очереди (~64 байта)    │◀──────│                              │
 │                         │       │  OnlineTrainer               │
-│  writes training log    │──────▶│  polls log every 5s          │
-│  (~96 bytes/record)     │  file │  fits GBT base model (≥50)   │
-└─────────────────────────┘       │  updates Ridge online layer  │
+│  пишет тренировочный    │──────▶│  опрашивает лог каждые 5с    │
+│  лог (~96 байт/запись)  │  file │  обучает базовую GBT (≥50)   │
+└─────────────────────────┘       │  обновляет Ridge онлайн-слой │
                                   └──────────────────────────────┘
 ```
 
-- **Socket:** `/tmp/mlf_scheduler.sock` (env `MLF_SCHEDULER_SOCKET`)
-- **Training log:** `/tmp/mlf_training.bin` (env `MLF_TRAINING_LOG`)
-- **Model checkpoint:** `/tmp/mlf_model.pkl`
-- **Fallback:** if daemon is unreachable, standard AFL++ scheduler is used automatically
+- **Сокет:** `/tmp/mlf_scheduler.sock` (env `MLF_SCHEDULER_SOCKET`)
+- **Тренировочный лог:** `/tmp/mlf_training.bin` (env `MLF_TRAINING_LOG`)
+- **Чекпоинт модели:** `/tmp/mlf_model.pkl`
+- **Fallback:** если демон недоступен, автоматически используется стандартный планировщик AFL++
 
 ---
 
-## Requirements
+## Требования
 
 - Linux x86-64
-- AFL++ 4.32c (included in `AFLplusplus/`)
-- Clang/LLVM with `afl-clang-fast`
+- AFL++ 4.32c (включён в `AFLplusplus/`)
+- Clang/LLVM с `afl-clang-fast`
 - Python 3.10+, `numpy`, `scikit-learn`
 
 ```bash
@@ -42,20 +42,20 @@ pip3 install numpy scikit-learn
 
 ---
 
-## Build
+## Сборка
 
-### 1. Build `mlf-fuzz`
+### 1. Собрать `mlf-fuzz`
 
 ```bash
 cd AFLplusplus
 make mlf-fuzz -j$(nproc)
 ```
 
-Output: `AFLplusplus/mlf-fuzz`
+Результат: `AFLplusplus/mlf-fuzz`
 
-### 2. Build a fuzzing target
+### 2. Собрать таргет для фаззинга
 
-Sources are cloned into `targets/src/`, binaries go to `targets/bin/`.
+Исходники клонируются в `targets/src/`, бинарники попадают в `targets/bin/`.
 
 **yyjson:**
 ```bash
@@ -98,9 +98,9 @@ AFL_SKIP_CPUFREQ=1 ./afl-clang-fast++ -std=c++11 -fsanitize=address,undefined -g
 
 ---
 
-## Usage
+## Использование
 
-### Step 1 — Start the ML daemon
+### Шаг 1 — Запустить ML-демон
 
 ```bash
 cd /path/to/AFLplusplusProfessional
@@ -110,9 +110,9 @@ python3 -m ml_daemon.daemon \
     --model  /tmp/mlf_model.pkl
 ```
 
-The daemon starts immediately and returns `energy=100` (default) until it has collected ≥ 50 training records, after which the base GBT model is trained and predictions become real.
+Демон стартует сразу и возвращает `energy=100` (дефолт), пока не накоплено ≥ 50 записей. После этого обучается базовая GBT-модель и предсказания становятся реальными.
 
-### Step 2 — Run `mlf-fuzz`
+### Шаг 2 — Запустить `mlf-fuzz`
 
 ```bash
 AFL_SKIP_CPUFREQ=1 \
@@ -126,15 +126,15 @@ MLF_TRAINING_LOG=/tmp/mlf_training.bin \
     -- ./targets/bin/fuzz_yyjson
 ```
 
-| Flag | Meaning |
-|------|---------|
-| `-i seeds/` | Input corpus (8 JSON seeds included) |
-| `-o /tmp/out_yyjson` | Output directory (created automatically) |
-| `-m none` | Disable memory limit (required with ASAN) |
-| `-t 10000` | Timeout per execution, ms |
-| `-x json.dict` | Token dictionary (26 JSON tokens included) |
+| Флаг | Значение |
+| --- | --- |
+| `-i seeds/` | Входной корпус (8 JSON-сидов включены) |
+| `-o /tmp/out_yyjson` | Выходная директория (создаётся автоматически) |
+| `-m none` | Отключить лимит памяти (нужно при ASAN) |
+| `-t 10000` | Таймаут на один запуск, мс |
+| `-x json.dict` | Словарь токенов (26 JSON-токенов включены) |
 
-### Run without ML (fallback / baseline)
+### Запуск без ML (fallback / baseline)
 
 ```bash
 AFL_SKIP_CPUFREQ=1 MLF_SCHEDULER_DISABLE=1 \
@@ -142,65 +142,64 @@ AFL_SKIP_CPUFREQ=1 MLF_SCHEDULER_DISABLE=1 \
     -- ./targets/bin/fuzz_yyjson
 ```
 
-Setting `MLF_SCHEDULER_DISABLE=1` disables the ML hook — mlf-fuzz behaves identically to standard `afl-fuzz`.
+`MLF_SCHEDULER_DISABLE=1` отключает ML-хук — mlf-fuzz ведёт себя идентично стандартному `afl-fuzz`.
 
 ---
 
-## ML Model Lifecycle
+## Жизненный цикл ML-модели
 
-| Phase | Condition | Behavior |
-|-------|-----------|----------|
-| Cold start | < 50 records | Returns `ENERGY_DEFAULT = 100` |
-| Base model | ≥ 50 records | GBT trained on all data |
-| Online adaptation | Every new batch | Ridge regression on 500-record sliding window |
-| Base refit | Every 500 new records | Full GBT retrain |
+| Фаза | Условие | Поведение |
+| --- | --- | --- |
+| Холодный старт | < 50 записей | Возвращает `ENERGY_DEFAULT = 100` |
+| Базовая модель | ≥ 50 записей | GBT обучается на всех данных |
+| Онлайн-адаптация | Каждая новая партия | Ridge-регрессия на скользящем окне 500 записей |
+| Переобучение базы | Каждые 500 новых записей | Полный refit GBT |
 
-The model is saved to `--model` path on every refit and on daemon shutdown (SIGINT/SIGTERM).
+Модель сохраняется по пути `--model` при каждом refit и при завершении демона (SIGINT/SIGTERM).
 
 ---
 
-## Project Structure
+## Структура проекта
 
 ```
 AFLplusplusProfessional/
-├── AFLplusplus/              # AFL++ 4.32c source (modified)
+├── AFLplusplus/              # Исходники AFL++ 4.32c (модифицированы)
 │   ├── src/
-│   │   ├── afl-fuzz-queue.c  # calculate_score() with ML hook
-│   │   └── ml-scheduler.c   # C-side socket client + training log writer
+│   │   ├── afl-fuzz-queue.c  # calculate_score() с ML-хуком
+│   │   └── ml-scheduler.c   # C-клиент сокета + запись тренировочного лога
 │   ├── include/
-│   │   └── ml-scheduler.h   # Protocol constants
-│   └── mlf-fuzz              # Built binary (after make mlf-fuzz)
+│   │   └── ml-scheduler.h   # Константы протокола
+│   └── mlf-fuzz              # Собранный бинарь (после make mlf-fuzz)
 │
-├── ml_daemon/                # Python ML daemon
-│   ├── daemon.py             # Entry point
-│   ├── server.py             # UNIX socket server (threading)
-│   ├── trainer.py            # Online training loop
+├── ml_daemon/                # Python ML-демон
+│   ├── daemon.py             # Точка входа
+│   ├── server.py             # UNIX-сокет сервер (threading)
+│   ├── trainer.py            # Цикл онлайн-обучения
 │   ├── model.py              # EnergyModel: GBT + Ridge
-│   ├── log_reader.py         # Binary log parser (96 bytes/record)
-│   └── test_daemon.py        # Unit tests (7/7)
+│   ├── log_reader.py         # Парсер бинарного лога (96 байт/запись)
+│   └── test_daemon.py        # Юнит-тесты (7/7)
 │
 ├── targets/
-│   ├── fuzz_yyjson.c         # Harness for yyjson
-│   ├── fuzz_cjson.c          # Harness for cJSON
-│   ├── fuzz_tunnuz.cpp       # Harness for tunnuz/json
-│   ├── bin/                  # Built harness binaries (gitignored)
-│   └── src/                  # Cloned parser sources (gitignored)
+│   ├── fuzz_yyjson.c         # Харнес для yyjson
+│   ├── fuzz_cjson.c          # Харнес для cJSON
+│   ├── fuzz_tunnuz.cpp       # Харнес для tunnuz/json
+│   ├── bin/                  # Собранные бинарники харнесов (в .gitignore)
+│   └── src/                  # Исходники парсеров (в .gitignore)
 │
-├── seeds/                    # 8 JSON seed files
-├── json.dict                 # AFL++ dictionary (26 JSON tokens)
-└── PROJECT_STATE.md          # Current component statuses and test results
+├── seeds/                    # 8 JSON-сидов
+└── json.dict                 # Словарь AFL++ (26 JSON-токенов)
 ```
 
 ---
 
-## Running Tests
+## Запуск тестов
 
 ```bash
 cd /path/to/AFLplusplusProfessional
 python3 -m ml_daemon.test_daemon
 ```
 
-Expected output:
+Ожидаемый вывод:
 ```
 PASS: record size == 96
 PASS: log parser
@@ -213,10 +212,10 @@ PASS: server socket (energy=270)
 
 ---
 
-## Environment Variables
+## Переменные окружения
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MLF_SCHEDULER_SOCKET` | `/tmp/mlf_scheduler.sock` | UNIX socket path |
-| `MLF_TRAINING_LOG` | `/tmp/mlf_training.bin` | Binary training log path |
-| `MLF_SCHEDULER_DISABLE` | unset | Set to `1` to disable ML, use standard scheduler |
+| Переменная | По умолчанию | Описание |
+| --- | --- | --- |
+| `MLF_SCHEDULER_SOCKET` | `/tmp/mlf_scheduler.sock` | Путь к UNIX-сокету |
+| `MLF_TRAINING_LOG` | `/tmp/mlf_training.bin` | Путь к бинарному тренировочному логу |
+| `MLF_SCHEDULER_DISABLE` | не задана | Установить `1` для отключения ML, используется стандартный планировщик |
