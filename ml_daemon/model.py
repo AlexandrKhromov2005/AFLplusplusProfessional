@@ -95,7 +95,7 @@ class EnergyModel:
         if not self.is_fitted:
             return
 
-        X_win = np.array(self._window_X, dtype=np.float32)
+        X_win = np.array(self._window_X, dtype=np.float32).reshape(-1, 16)
         y_win = np.array(self._window_y, dtype=np.float32)
         X_scaled = self.scaler.transform(X_win)
 
@@ -116,7 +116,7 @@ class EnergyModel:
         if not self.is_fitted or self.base_model is None:
             return ENERGY_DEFAULT
 
-        X = features.reshape(1, -1)
+        X = features.reshape(1, -1).astype(np.float32)
         X_scaled = self.scaler.transform(X)
 
         if self.online_model is not None and hasattr(self.online_model, 'coef_'):
