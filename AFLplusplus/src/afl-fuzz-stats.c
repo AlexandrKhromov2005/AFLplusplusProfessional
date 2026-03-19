@@ -1501,32 +1501,43 @@ void show_stats_normal(afl_state_t *afl) {
     u32 ml_pct  = total_dec > 0 ? (u32)(ms->ml_total_decisions * 100 / total_dec) : 0;
     u32 afl_pct = 100 - ml_pct;
 
-    /* Определить collapse risk по avg_reward_ema */
+    /* Определить collapse risk по avg_reward_ema.
+       Слово дополнено пробелами до 7 символов — чтобы правая граница блока
+       всегда находилась на одной позиции (ANSI-коды не считаются printf). */
     const char *collapse_str;
     if (!ms->daemon_available) {
-      collapse_str = cGRA "offline" cRST;
+      collapse_str = cGRA "offline" cRST;   /* 7 символов */
     } else if (ms->avg_reward_ema > 1.0f) {
-      collapse_str = cLGN "low" cRST;
+      collapse_str = cLGN "low    " cRST;   /* 7 символов */
     } else if (ms->avg_reward_ema > 0.1f) {
-      collapse_str = cYEL "medium" cRST;
+      collapse_str = cYEL "medium " cRST;   /* 7 символов */
     } else {
-      collapse_str = cLRD "high" cRST;
+      collapse_str = cLRD "high   " cRST;   /* 7 символов */
     }
+
+    /* Ширина блока: 54 символа (inner = 52).
+       Заголовок: bLT+bH+" ML scheduler "+bH37+bRT = 1+1+14+37+1 = 54.
+       Каждая строка: bV + 52 символа контента + bV = 54.
+       Нижняя рамка: bLB+bH+" decisions: "+%-8llu+bH31+bRB = 1+1+12+8+31+1 = 54. */
 
     SAYF(SET_G1 bSTG bLT bH bSTOP cCYA " ML scheduler " bSTG
          bH30 bH5 bH2 bRT bSTOP RESET_G1 "\n");
 
-    SAYF(bV bSTOP "   model updates : " cRST "%-5u" bSTG bV bSTOP
-         "    reward (ema) : " cRST "%-8.2f" bSTG bV "\n",
+    /* Строка 1: "  model updates : " (18) + %-6u (6) +
+                 "   reward (ema) : " (18) + %-8.2f (8) + "  " (2) = 52 */
+    SAYF(bV bSTOP "  model updates : " cRST "%-6u"
+         "   reward (ema) : " cRST "%-8.2f  " bSTG bV "\n",
          ms->model_updates, ms->avg_reward_ema);
 
-    SAYF(bV bSTOP "    ml vs fallbk : " cRST "%3u%%" cGRA "/" cRST "%-3u%%"
-         "  " bSTG bV bSTOP " collapse risk : " cRST "%s" bSTG
-         "        " bV "\n",
+    /* Строка 2: "   ml vs fallbk : " (18) + %3u%% (4) + / (1) + %-3u%% (4) +
+                 "  " (2) + "collapse risk : " (16) + collapse_str (7) = 52 */
+    SAYF(bV bSTOP "   ml vs fallbk : " cRST "%3u%%" cGRA "/" cRST "%-3u%%"
+         "  " "collapse risk : " cRST "%s" bSTG bV "\n",
          ml_pct, afl_pct, collapse_str);
 
+    /* Нижняя рамка: bH30+bH(1) = 31 символ → итого 54 */
     SAYF(SET_G1 bSTG bLB bH bSTOP cCYA " decisions: "
-         cRST "%-8llu" bSTG bH20 bH5 bRB bSTOP RESET_G1 "\n",
+         cRST "%-8llu" bSTG bH30 bH bRB bSTOP RESET_G1 "\n",
          (unsigned long long)total_dec);
 
   }
