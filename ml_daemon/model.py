@@ -119,7 +119,7 @@ class EnergyModel:
         X = features.reshape(1, -1)
         X_scaled = self.scaler.transform(X)
 
-        if self.online_model is not None:
+        if self.online_model is not None and hasattr(self.online_model, 'coef_'):
             base_pred = self.base_model.predict(X_scaled).reshape(-1, 1)
             X_aug = np.hstack([X_scaled, base_pred])
             energy_raw = self.online_model.predict(X_aug)[0]
