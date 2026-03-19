@@ -1499,43 +1499,34 @@ void show_stats_normal(afl_state_t *afl) {
     ml_sched_state_t *ms = afl->ml_sched;
     u64 total_dec = ms->ml_total_decisions + ms->afl_total_decisions;
     u32 ml_pct  = total_dec > 0 ? (u32)(ms->ml_total_decisions * 100 / total_dec) : 0;
+    u32 afl_pct = 100 - ml_pct;
 
-    /* Collapse risk: слово дополнено пробелами до 10 видимых символов.
-       ANSI-коды в printf не считаются шириной, поэтому паддинг в литерале. */
     const char *collapse_str;
     if (!ms->daemon_available) {
-      collapse_str = cGRA "offline   " cRST;   /* 10 символов */
+      collapse_str = cGRA "offline " cRST;
     } else if (ms->avg_reward_ema > 1.0f) {
-      collapse_str = cLGN "low       " cRST;   /* 10 символов */
+      collapse_str = cLGN "low    " cRST;
     } else if (ms->avg_reward_ema > 0.1f) {
-      collapse_str = cYEL "medium    " cRST;   /* 10 символов */
+      collapse_str = cYEL "medium " cRST;
     } else {
-      collapse_str = cLRD "high      " cRST;   /* 10 символов */
+      collapse_str = cLRD "high   " cRST;
     }
 
-    /* Ширина блока: 54 символа (inner = 52).
-       Каждая строка: bV + левая(24) + bV + правая(27) + bV = 54.
-       Строка 1 левая:  "   model updates : "(19) + %-5u(5)     = 24
-       Строка 1 правая: "    reward (ema) : "(19) + %-8.2f(8)   = 27
-       Строка 2 левая:  "    ml vs fallbk : "(19) + %4u%%(5)    = 24
-       Строка 2 правая: " collapse risk : "(17)  + %-10s(10)    = 27 */
+    SAYF("\n" SET_G1 bSTG bLT bH bSTOP cCYA
+         " ML scheduler "
+         bSTG bH20 bH10 bH5 bH2 bH bRT bSTOP RESET_G1 "\n");
 
-    SAYF(SET_G1 bSTG bLT bH bSTOP cCYA " ML scheduler " bSTG
-         bH30 bH5 bH2 bRT bSTOP RESET_G1 "\n");
-
-    SAYF(bV bSTOP "   model updates : " cRST "%-5u" bSTG bV bSTOP
-         "    reward (ema) : " cRST "%-8.2f" bSTG bV "\n",
+    SAYF(bV bSTOP " model updates : " cRST "%-5u" bSTG
+         "  " bV bSTOP "  reward (ema) : " cRST "%-10.2f" bSTG bV "\n",
          ms->model_updates, ms->avg_reward_ema);
 
-    /* ml_pct с %4u%%: " 100%", "  50%", "   0%" — всегда 5 символов без
-       внутренних пробелов (в отличие от %-3u%% который давал "0  %"). */
-    SAYF(bV bSTOP "    ml vs fallbk : " cRST "%4u%%" bSTG bV bSTOP
-         " collapse risk : " cRST "%s" bSTG bV "\n",
-         ml_pct, collapse_str);
+    SAYF(bV bSTOP "  ml vs fallbk : " cRST "%3u%%" cGRA "/" cRST "%-3u%%"
+         bSTG "  " bV bSTOP " collapse risk : " cRST "%s" bSTG "  " bV "\n",
+         ml_pct, afl_pct, collapse_str);
 
-    /* Нижняя рамка: bH30+bH(1) = 31 символ → итого 54 */
     SAYF(SET_G1 bSTG bLB bH bSTOP cCYA " decisions: "
-         cRST "%-8llu" bSTG bH30 bH bRB bSTOP RESET_G1 "\n",
+         cRST "%-8llu"
+         bSTG bH20 bH5 bRB bSTOP RESET_G1 "\n",
          (unsigned long long)total_dec);
 
   }
