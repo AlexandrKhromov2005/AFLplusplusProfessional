@@ -1,0 +1,76 @@
+# Скомпилированные бинарники AFL++
+AFLplusplus/afl-fuzz
+AFLplusplus/mlf-fuzz
+AFLplusplus/afl-showmap
+AFLplusplus/afl-tmin
+AFLplusplus/afl-gotcpu
+AFLplusplus/afl-analyze
+AFLplusplus/afl-cc
+AFLplusplus/afl-c++
+AFLplusplus/afl-clang
+AFLplusplus/afl-clang++
+AFLplusplus/afl-clang-fast
+AFLplusplus/afl-clang-fast++
+AFLplusplus/afl-clang-lto
+AFLplusplus/afl-clang-lto++
+AFLplusplus/afl-g++
+AFLplusplus/afl-gcc
+AFLplusplus/afl-gcc-fast
+AFLplusplus/afl-g++-fast
+AFLplusplus/afl-ld
+AFLplusplus/afl-lto
+AFLplusplus/afl-lto++
+AFLplusplus/afl-fuzz-document
+AFLplusplus/as
+AFLplusplus/ld
+
+# Скомпилированные объектники
+AFLplusplus/*.o
+AFLplusplus/src/*.o
+AFLplusplus/instrumentation/*.o
+AFLplusplus/*.so
+AFLplusplus/*.8
+AFLplusplus/*.a
+
+# LLVM плагины
+AFLplusplus/SanitizerCoverage*.so
+AFLplusplus/*-pass.so
+AFLplusplus/afl-llvm-*.so
+
+# Временные файлы сборки
+AFLplusplus/.test*
+AFLplusplus/test-instr*
+AFLplusplus/*.dSYM
+AFLplusplus/*.stackdump
+AFLplusplus/a.out
+AFLplusplus/core*
+
+# Собранные таргеты (бинарники харнесов)
+targets/bin/
+
+# Исходники таргетов (клонируются при сборке)
+targets/src/
+
+# ML модель и тренировочный лог (runtime данные)
+*.pkl
+*.bin
+
+# Python кэш
+__pycache__/
+*.pyc
+*.pyo
+ml_daemon/__pycache__/
+
+# Выходные директории AFL++
+output_*/
+out_*/
+findings/
+
+***REMOVED***
+***REMOVED***
+
+# Временные файлы редактора
+*.swp
+*.swo
+*~
+.DS_Store
