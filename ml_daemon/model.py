@@ -15,6 +15,7 @@ ML-модель для предсказания energy (power schedule).
 import numpy as np
 import pickle
 import os
+import threading
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
@@ -45,6 +46,9 @@ class EnergyModel:
         self.is_fitted = False
         self.total_trained = 0
         self.update_count = 0
+        # Lock защищает scaler/base_model/online_model от concurrent access
+        # между fit_base (trainer thread) и predict (server thread)
+        self._lock = threading.Lock()
 
         # Скользящее окно последних ONLINE_WINDOW записей (numpy arrays)
         self._window_X = np.empty((0, 16), dtype=np.float32)
@@ -63,24 +67,29 @@ class EnergyModel:
         if len(X) < MIN_RECORDS_BASE:
             return
 
-        # Сбросить online_model ДО перефита scaler —
-        # чтобы predict() не использовал stale Ridge
-        # пока scaler находится в промежуточном состоянии
-        self.online_model = None
+        # Обучить всё в локальных переменных ВНЕ lock —
+        # чтобы predict() не блокировался на время GBT fit (~50ms)
+        new_scaler = StandardScaler()
+        new_scaler.fit(X)
+        X_scaled = new_scaler.transform(X)
 
-        self.scaler.fit(X)
-        X_scaled = self.scaler.transform(X)
-
-        self.base_model = GradientBoostingRegressor(
+        new_base = GradientBoostingRegressor(
             n_estimators=100,
             max_depth=4,
             learning_rate=0.1,
             subsample=0.8,
             random_state=42,
         )
-        self.base_model.fit(X_scaled, y)
-        self.total_trained = len(X)
-        self.is_fitted = True
+        new_base.fit(X_scaled, y)
+
+        # Атомарная замена под lock — predict() увидит консистентное состояние
+        with self._lock:
+            self.scaler = new_scaler
+            self.base_model = new_base
+            self.online_model = None  # stale Ridge после нового scaler
+            self.total_trained = len(X)
+            self.is_fitted = True
+
         print(f"[MLF daemon] Base model fitted on {len(X)} samples")
 
     def update_online(self, X_new: np.ndarray, y_new: np.ndarray) -> None:
@@ -100,17 +109,20 @@ class EnergyModel:
         if not self.is_fitted:
             return
 
-        # _window_X уже numpy array — конверсия не нужна
-        X_scaled = self.scaler.transform(self._window_X)
+        # Снять snapshot scaler/base_model под lock
+        with self._lock:
+            scaler = self.scaler
+            base = self.base_model
 
-        # Используем base_model predictions как признак для online модели
-        base_pred = self.base_model.predict(X_scaled).reshape(-1, 1)
+        X_scaled = scaler.transform(self._window_X)
+        base_pred = base.predict(X_scaled).reshape(-1, 1)
         X_aug = np.hstack([X_scaled, base_pred])
 
-        # Атомарная замена — predict() никогда не увидит незафиченный Ridge
         new_model = Ridge(alpha=1.0)
         new_model.fit(X_aug, self._window_y)
-        self.online_model = new_model
+
+        with self._lock:
+            self.online_model = new_model
         self.update_count += 1
 
     def predict(self, features: np.ndarray) -> int:
@@ -119,19 +131,23 @@ class EnergyModel:
         Возвращает int в диапазоне [ENERGY_MIN, ENERGY_MAX].
         Если модель не обучена — возвращает ENERGY_DEFAULT.
         """
-        if not self.is_fitted or self.base_model is None:
-            return ENERGY_DEFAULT
+        # Снять консистентный snapshot под lock
+        with self._lock:
+            if not self.is_fitted or self.base_model is None:
+                return ENERGY_DEFAULT
+            scaler = self.scaler
+            base = self.base_model
+            online = self.online_model
 
         X = features.reshape(1, -1).astype(np.float32)
-        X_scaled = self.scaler.transform(X)
+        X_scaled = scaler.transform(X)
 
-        online = self.online_model  # локальная копия — защита от race condition
         if online is not None and hasattr(online, 'coef_'):
-            base_pred = self.base_model.predict(X_scaled).reshape(-1, 1)
+            base_pred = base.predict(X_scaled).reshape(-1, 1)
             X_aug = np.hstack([X_scaled, base_pred])
             energy_raw = online.predict(X_aug)[0]
         else:
-            energy_raw = self.base_model.predict(X_scaled)[0]
+            energy_raw = base.predict(X_scaled)[0]
 
         return self._clip_energy(energy_raw)
 
