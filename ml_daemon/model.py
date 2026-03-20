@@ -15,10 +15,10 @@ ML-модель для предсказания energy (power schedule).
 import numpy as np
 import pickle
 import os
-from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
-from typing import Optional, Tuple
+from typing import Optional
 
 # Диапазон допустимых energy значений
 ENERGY_MIN = 1
@@ -58,10 +58,15 @@ class EnergyModel:
         """
         Обучить базовую модель на всём накопленном датасете.
         Вызывается при достижении MIN_RECORDS_BASE записей
-        и затем каждые 1000 новых записей.
+        и затем каждые REFIT_BASE_EVERY новых записей.
         """
         if len(X) < MIN_RECORDS_BASE:
             return
+
+        # Сбросить online_model ДО перефита scaler —
+        # чтобы predict() не использовал stale Ridge
+        # пока scaler находится в промежуточном состоянии
+        self.online_model = None
 
         self.scaler.fit(X)
         X_scaled = self.scaler.transform(X)
@@ -103,8 +108,10 @@ class EnergyModel:
         base_pred = self.base_model.predict(X_scaled).reshape(-1, 1)
         X_aug = np.hstack([X_scaled, base_pred])
 
-        self.online_model = Ridge(alpha=1.0)
-        self.online_model.fit(X_aug, y_win)
+        new_model = Ridge(alpha=1.0)
+        new_model.fit(X_aug, y_win)
+        # Атомарная замена — predict() никогда не увидит частично обученный Ridge
+        self.online_model = new_model
         self.update_count += 1
 
     def predict(self, features: np.ndarray) -> int:
@@ -119,10 +126,11 @@ class EnergyModel:
         X = features.reshape(1, -1).astype(np.float32)
         X_scaled = self.scaler.transform(X)
 
-        if self.online_model is not None and hasattr(self.online_model, 'coef_'):
+        online = self.online_model  # локальная копия — защита от race condition
+        if online is not None and hasattr(online, 'coef_'):
             base_pred = self.base_model.predict(X_scaled).reshape(-1, 1)
             X_aug = np.hstack([X_scaled, base_pred])
-            energy_raw = self.online_model.predict(X_aug)[0]
+            energy_raw = online.predict(X_aug)[0]
         else:
             energy_raw = self.base_model.predict(X_scaled)[0]
 
