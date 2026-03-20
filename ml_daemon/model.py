@@ -46,9 +46,9 @@ class EnergyModel:
         self.total_trained = 0
         self.update_count = 0
 
-        # Скользящее окно последних ONLINE_WINDOW записей
-        self._window_X = []
-        self._window_y = []
+        # Скользящее окно последних ONLINE_WINDOW записей (numpy arrays)
+        self._window_X = np.empty((0, 16), dtype=np.float32)
+        self._window_y = np.empty(0, dtype=np.float32)
 
     def _clip_energy(self, val: float) -> int:
         """Ограничить предсказание допустимым диапазоном."""
@@ -88,9 +88,9 @@ class EnergyModel:
         Онлайн-адаптация: Ridge regression на скользящем окне.
         Вызывается после каждого батча новых записей.
         """
-        # Обновить скользящее окно
-        self._window_X.extend(X_new.tolist())
-        self._window_y.extend(y_new.tolist())
+        # Обновить скользящее окно (numpy arrays — без list→array конверсии)
+        self._window_X = np.vstack([self._window_X, X_new.astype(np.float32)])
+        self._window_y = np.concatenate([self._window_y, y_new.astype(np.float32)])
         if len(self._window_X) > ONLINE_WINDOW:
             self._window_X = self._window_X[-ONLINE_WINDOW:]
             self._window_y = self._window_y[-ONLINE_WINDOW:]
@@ -100,17 +100,16 @@ class EnergyModel:
         if not self.is_fitted:
             return
 
-        X_win = np.array(self._window_X, dtype=np.float32).reshape(-1, 16)
-        y_win = np.array(self._window_y, dtype=np.float32)
-        X_scaled = self.scaler.transform(X_win)
+        # _window_X уже numpy array — конверсия не нужна
+        X_scaled = self.scaler.transform(self._window_X)
 
         # Используем base_model predictions как признак для online модели
         base_pred = self.base_model.predict(X_scaled).reshape(-1, 1)
         X_aug = np.hstack([X_scaled, base_pred])
 
+        # Атомарная замена — predict() никогда не увидит незафиченный Ridge
         new_model = Ridge(alpha=1.0)
-        new_model.fit(X_aug, y_win)
-        # Атомарная замена — predict() никогда не увидит частично обученный Ridge
+        new_model.fit(X_aug, self._window_y)
         self.online_model = new_model
         self.update_count += 1
 
@@ -163,8 +162,15 @@ class EnergyModel:
             self.is_fitted = state['is_fitted']
             self.total_trained = state['total_trained']
             self.update_count = state['update_count']
-            self._window_X = state.get('_window_X', [])
-            self._window_y = state.get('_window_y', [])
+            # Поддержка старых чекпоинтов где _window_X был list
+            raw_X = state.get('_window_X', np.empty((0, 16), dtype=np.float32))
+            raw_y = state.get('_window_y', np.empty(0, dtype=np.float32))
+            if isinstance(raw_X, list):
+                self._window_X = np.array(raw_X, dtype=np.float32).reshape(-1, 16) if raw_X else np.empty((0, 16), dtype=np.float32)
+                self._window_y = np.array(raw_y, dtype=np.float32)
+            else:
+                self._window_X = raw_X
+                self._window_y = raw_y
             print(f"[MLF daemon] Model loaded from {path} "
                   f"(trained={self.total_trained}, updates={self.update_count})")
             return True
