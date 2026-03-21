@@ -1190,15 +1190,27 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
     if (ml_energy > 0) {
 
-      /* Ограничить разумными рамками */
+      /* Cap энергии в зависимости от стадии фаззинга */
+      u32 max_allowed;
+      if (afl->queue_cycle <= 1) {
+        /* Начало: ML может давать до 4x от базовых 100 */
+        max_allowed = 400;
+      } else if (afl->queue_cycle <= 5) {
+        /* Середина: до 2x */
+        max_allowed = 200;
+      } else {
+        /* Насыщение: не превышать AFL baseline ~100 */
+        max_allowed = 150;
+      }
+
+      if ((u32)ml_energy > max_allowed) ml_energy = (s32)max_allowed;
+
       if (ml_energy > (s32)(afl->havoc_max_mult * 100))
           ml_energy = afl->havoc_max_mult * 100;
       if (ml_energy < 1) ml_energy = 1;
 
-      /* Сохранить для последующего логирования */
       afl->ml_cur_energy_assigned = (u32)ml_energy;
       afl->ml_cur_entry_id        = q->id;
-
       afl->ml_sched->ml_total_decisions++;
       return (u32)ml_energy;
 

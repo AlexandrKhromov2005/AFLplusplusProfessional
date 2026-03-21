@@ -1493,40 +1493,52 @@ void show_stats_normal(afl_state_t *afl) {
 
 #undef IB
 
-  /* === ML Scheduler UI block === */
+  /* === ML Scheduler UI block (78 chars = AFL++ full width) === */
   if (afl->ml_sched) {
 
     ml_sched_state_t *ms = afl->ml_sched;
     u64 total_dec = ms->ml_total_decisions + ms->afl_total_decisions;
-    u32 ml_pct  = total_dec > 0 ? (u32)(ms->ml_total_decisions * 100 / total_dec) : 0;
+    u32 ml_pct  = total_dec > 0
+                  ? (u32)(ms->ml_total_decisions * 100 / total_dec) : 0;
     u32 afl_pct = 100 - ml_pct;
 
-    const char *collapse_str;
-    if (!ms->daemon_available) {
-      collapse_str = cGRA "offline " cRST;
-    } else if (ms->avg_reward_ema > 1.0f) {
-      collapse_str = cLGN "low    " cRST;
-    } else if (ms->avg_reward_ema > 0.1f) {
-      collapse_str = cYEL "medium " cRST;
-    } else {
-      collapse_str = cLRD "high   " cRST;
-    }
+    /* Collapse risk — цвет и текст раздельно для корректного %-20s */
+    const char *crisk_clr, *crisk_txt;
+    if (!ms->daemon_available)          { crisk_clr = cGRA; crisk_txt = "offline"; }
+    else if (ms->avg_reward_ema > 1.0f) { crisk_clr = cLGN; crisk_txt = "low"; }
+    else if (ms->avg_reward_ema > 0.1f) { crisk_clr = cYEL; crisk_txt = "medium"; }
+    else                                { crisk_clr = cLRD; crisk_txt = "high"; }
 
-    SAYF("\n" SET_G1 bSTG bLT bH bSTOP cCYA
-         " ML scheduler "
-         bSTG bH20 bH10 bH5 bH2 bH bRT bSTOP RESET_G1 "\n");
+    /* Cycle stage */
+    const char *stage_clr, *stage_txt;
+    if (afl->queue_cycle <= 1)      { stage_clr = cLGN; stage_txt = "early"; }
+    else if (afl->queue_cycle <= 5) { stage_clr = cYEL; stage_txt = "mid"; }
+    else                            { stage_clr = cLRD; stage_txt = "late"; }
 
-    SAYF(bV bSTOP " model updates : " cRST "%-5u" bSTG
-         "  " bV bSTOP "  reward (ema) : " cRST "%-10.2f" bSTG bV "\n",
-         ms->model_updates, ms->avg_reward_ema);
+    /* Ширина 78: bLT(1)+bH(1)+" ML scheduler "(14)+bH61+bRT(1)
+       inner = 76: left(38) + bV(1) + right(37) = 76
+       footer: bLB(1)+bH(1)+" decisions: "(12)+%-12llu(12)+bH51+bRB(1) = 78 */
 
-    SAYF(bV bSTOP "  ml vs fallbk : " cRST "%3u%%" cGRA "/" cRST "%-3u%%"
-         bSTG "  " bV bSTOP " collapse risk : " cRST "%s" bSTG "  " bV "\n",
-         ml_pct, afl_pct, collapse_str);
+    SAYF("\n" SET_G1 bSTG bLT bH bSTOP cCYA " ML scheduler "
+         bSTG bH30 bH20 bH10 bH bRT bSTOP RESET_G1 "\n");
+
+    /* Row 1: reward (ema) | collapse risk
+       Left:  "  reward (ema) : "(17) + %-20.2f(20) + " "(1) = 38
+       Right: " collapse risk : "(17) + color + %-20s(20) = 37 */
+    SAYF(bV bSTOP "  reward (ema) : " cRST "%-20.2f " bSTG bV bSTOP
+         " collapse risk : " "%s" "%-20s" bSTG bV "\n",
+         ms->avg_reward_ema, crisk_clr, crisk_txt);
+
+    /* Row 2: ml vs fallbk | cycle stage
+       Left:  "   ml vs fallbk : "(18) + %3u%%(4)+/(1)+%3u%%(4)+11sp(11) = 38
+       Right: "  cycle stage  : "(17) + color + %-20s(20) = 37 */
+    SAYF(bV bSTOP "   ml vs fallbk : " cRST "%3u%%" cGRA "/" cRST "%3u%%"
+         "           " bSTG bV bSTOP
+         "  cycle stage  : " "%s" "%-20s" bSTG bV "\n",
+         ml_pct, afl_pct, stage_clr, stage_txt);
 
     SAYF(SET_G1 bSTG bLB bH bSTOP cCYA " decisions: "
-         cRST "%-8llu"
-         bSTG bH20 bH5 bRB bSTOP RESET_G1 "\n",
+         cRST "%-12llu" bSTG bH30 bH20 bH bRB bSTOP RESET_G1 "\n",
          (unsigned long long)total_dec);
 
   }
