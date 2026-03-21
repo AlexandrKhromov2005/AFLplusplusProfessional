@@ -1190,20 +1190,24 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
     if (ml_energy > 0) {
 
-      /* Cap энергии по времени работы фаззера.
-       * queue_cycle не подходит — при большом корпусе он остаётся 0.
-       * Время всегда растёт независимо от размера очереди. */
+      /* Адаптивный cap энергии по сигналам фаззера.
+       *
+       * EARLY  — находки идут, очередь не исчерпана. ML может быть агрессивным.
+       * MID    — замедление: находки редкие, но ещё есть.
+       * LATE   — насыщение: давно ничего нового, очередь почти пройдена.
+       *
+       * cycles_wo_finds и pending_not_fuzzed — стандартные поля afl_state,
+       * обновляются AFL++ автоматически. */
       u32 max_allowed;
-      u64 run_ms = get_cur_time() - afl->start_time;
 
-      if (run_ms < 3600000ULL) {
-        /* Первый час: агрессивный режим — быстро наращиваем corpus */
+      if (afl->cycles_wo_finds == 0 && afl->pending_not_fuzzed > 500) {
+        /* EARLY: находки идут + много необработанных сидов */
         max_allowed = 400;
-      } else if (run_ms < 10800000ULL) {
-        /* 1-3 часа: умеренный режим */
+      } else if (afl->cycles_wo_finds < 3 || afl->pending_not_fuzzed > 100) {
+        /* MID: находки редкие ИЛИ очередь ещё не исчерпана */
         max_allowed = 200;
       } else {
-        /* После 3 часов: близко к AFL baseline, не блокируем очередь */
+        /* LATE: давно без находок И очередь почти пройдена */
         max_allowed = 120;
       }
 

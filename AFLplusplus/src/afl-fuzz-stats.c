@@ -1509,12 +1509,15 @@ void show_stats_normal(afl_state_t *afl) {
     else if (ms->avg_reward_ema > 0.1f) { crisk_clr = cYEL; crisk_txt = "medium"; }
     else                                { crisk_clr = cLRD; crisk_txt = "high"; }
 
-    /* Cycle stage по времени (queue_cycle ненадёжен при большом корпусе) */
+    /* Cycle stage по тем же адаптивным критериям что и cap */
     const char *stage_clr, *stage_txt;
-    u64 _run_ms = get_cur_time() - afl->start_time;
-    if (_run_ms < 3600000ULL)       { stage_clr = cLGN; stage_txt = "early"; }
-    else if (_run_ms < 10800000ULL) { stage_clr = cYEL; stage_txt = "mid"; }
-    else                            { stage_clr = cLRD; stage_txt = "late"; }
+    if (afl->cycles_wo_finds == 0 && afl->pending_not_fuzzed > 500) {
+      stage_clr = cLGN; stage_txt = "early";
+    } else if (afl->cycles_wo_finds < 3 || afl->pending_not_fuzzed > 100) {
+      stage_clr = cYEL; stage_txt = "mid";
+    } else {
+      stage_clr = cLRD; stage_txt = "late";
+    }
 
     /* Ширина 78: bLT(1)+bH(1)+" ML scheduler "(14)+bH61+bRT(1)
        inner = 76: left(38) + bV(1) + right(37) = 76
