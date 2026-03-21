@@ -1190,24 +1190,27 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
     if (ml_energy > 0) {
 
-      /* Адаптивный cap энергии по сигналам фаззера.
+      /* Адаптивный cap энергии.
        *
-       * EARLY  — находки идут, очередь не исчерпана. ML может быть агрессивным.
-       * MID    — замедление: находки редкие, но ещё есть.
-       * LATE   — насыщение: давно ничего нового, очередь почти пройдена.
+       * Основной сигнал — last_find_time: сколько времени прошло
+       * с последней новой находки. Работает всегда, даже если
+       * queue_cycle не завершается из-за большого корпуса.
        *
-       * cycles_wo_finds и pending_not_fuzzed — стандартные поля afl_state,
-       * обновляются AFL++ автоматически. */
+       * pending_not_fuzzed — второй сигнал: сколько записей
+       * в очереди ещё не обработано. */
       u32 max_allowed;
+      u64 now = get_cur_time();
+      u64 no_find_ms = afl->last_find_time
+          ? (now - afl->last_find_time) : (now - afl->start_time);
 
-      if (afl->cycles_wo_finds == 0 && afl->pending_not_fuzzed > 500) {
-        /* EARLY: находки идут + много необработанных сидов */
+      if (no_find_ms < 600000ULL && afl->pending_not_fuzzed > 500) {
+        /* EARLY: находка <10 мин назад + много в очереди */
         max_allowed = 400;
-      } else if (afl->cycles_wo_finds < 3 || afl->pending_not_fuzzed > 100) {
-        /* MID: находки редкие ИЛИ очередь ещё не исчерпана */
+      } else if (no_find_ms < 1800000ULL || afl->pending_not_fuzzed > 100) {
+        /* MID: находка <30 мин назад ИЛИ очередь не исчерпана */
         max_allowed = 200;
       } else {
-        /* LATE: давно без находок И очередь почти пройдена */
+        /* LATE: >30 мин без находок И очередь почти пройдена */
         max_allowed = 120;
       }
 

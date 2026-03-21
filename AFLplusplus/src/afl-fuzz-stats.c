@@ -1509,11 +1509,14 @@ void show_stats_normal(afl_state_t *afl) {
     else if (ms->avg_reward_ema > 0.1f) { crisk_clr = cYEL; crisk_txt = "medium"; }
     else                                { crisk_clr = cLRD; crisk_txt = "high"; }
 
-    /* Cycle stage по тем же адаптивным критериям что и cap */
+    /* Cycle stage по тем же критериям что и cap в calculate_score() */
     const char *stage_clr, *stage_txt;
-    if (afl->cycles_wo_finds == 0 && afl->pending_not_fuzzed > 500) {
+    u64 _now = get_cur_time();
+    u64 _no_find = afl->last_find_time
+        ? (_now - afl->last_find_time) : (_now - afl->start_time);
+    if (_no_find < 600000ULL && afl->pending_not_fuzzed > 500) {
       stage_clr = cLGN; stage_txt = "early";
-    } else if (afl->cycles_wo_finds < 3 || afl->pending_not_fuzzed > 100) {
+    } else if (_no_find < 1800000ULL || afl->pending_not_fuzzed > 100) {
       stage_clr = cYEL; stage_txt = "mid";
     } else {
       stage_clr = cLRD; stage_txt = "late";
