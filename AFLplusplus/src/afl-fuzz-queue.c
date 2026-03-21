@@ -1190,17 +1190,21 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
     if (ml_energy > 0) {
 
-      /* Cap энергии в зависимости от стадии фаззинга */
+      /* Cap энергии по времени работы фаззера.
+       * queue_cycle не подходит — при большом корпусе он остаётся 0.
+       * Время всегда растёт независимо от размера очереди. */
       u32 max_allowed;
-      if (afl->queue_cycle <= 1) {
-        /* Начало: ML может давать до 4x от базовых 100 */
+      u64 run_ms = get_cur_time() - afl->start_time;
+
+      if (run_ms < 3600000ULL) {
+        /* Первый час: агрессивный режим — быстро наращиваем corpus */
         max_allowed = 400;
-      } else if (afl->queue_cycle <= 5) {
-        /* Середина: до 2x */
+      } else if (run_ms < 10800000ULL) {
+        /* 1-3 часа: умеренный режим */
         max_allowed = 200;
       } else {
-        /* Насыщение: не превышать AFL baseline ~100 */
-        max_allowed = 150;
+        /* После 3 часов: близко к AFL baseline, не блокируем очередь */
+        max_allowed = 120;
       }
 
       if ((u32)ml_energy > max_allowed) ml_energy = (s32)max_allowed;
