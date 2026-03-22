@@ -1178,6 +1178,34 @@ void update_bitmap_rescore(afl_state_t *afl, struct queue_entry *q, u32 index) {
    A helper function for fuzz_one(). Maybe some of these constants should
    go into config.h. */
 
+/* Per-seed energy decay: если сид давно не давал +cov, снижаем energy */
+static u32 apply_seed_decay(afl_state_t *afl, struct queue_entry *q, u32 energy) {
+
+  if (!afl->ml_sched) return energy;
+
+  ml_sched_state_t *ms = afl->ml_sched;
+  u64 since_reward = q->total_energy_given - q->energy_at_last_reward;
+
+  if (since_reward <= ms->decay_half_life / 2) {
+    return energy;
+  }
+
+  float exponent = (float)since_reward / (float)ms->decay_half_life;
+  float factor = powf(ms->decay_rate, exponent);
+  u32 decayed = (u32)((float)energy * factor);
+
+  if (decayed < ms->decay_min_energy) {
+    decayed = ms->decay_min_energy;
+  }
+
+  if (decayed < energy) {
+    ms->total_decayed++;
+  }
+
+  return decayed;
+
+}
+
 u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
   /* === Stagnation detection === */
@@ -1272,6 +1300,7 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
       afl->ml_cur_entry_id        = q->id;
       afl->ml_sched->ml_total_decisions++;
       afl->ml_sched->ml_total_energy_sum += (u32)ml_energy;
+      ml_energy = (s32)apply_seed_decay(afl, q, (u32)ml_energy);
       q->total_energy_given += (u32)ml_energy;
       return (u32)ml_energy;
 
@@ -1567,6 +1596,7 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
   }
 
+  perf_score = apply_seed_decay(afl, q, perf_score);
   q->total_energy_given += perf_score;
   return perf_score;
 

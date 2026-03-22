@@ -90,6 +90,20 @@ ml_sched_state_t *ml_sched_init(const char *socket_path, const char *log_path) {
   const char *st = getenv("MLF_STAGNATION_SEC");
   if (st) ms->stagnation_threshold_ms = (uint64_t)atoi(st) * 1000ULL;
 
+  /* Per-seed decay */
+  ms->decay_rate = 0.5f;
+  ms->decay_half_life = 500;
+  ms->decay_min_energy = 10;
+  ms->total_decayed = 0;
+  ms->total_reward_resets = 0;
+
+  const char *dr = getenv("MLF_DECAY_RATE");
+  if (dr) ms->decay_rate = atof(dr);
+  const char *dh = getenv("MLF_DECAY_HALFLIFE");
+  if (dh) ms->decay_half_life = (uint32_t)atoi(dh);
+  const char *dm = getenv("MLF_DECAY_MIN");
+  if (dm) ms->decay_min_energy = (uint32_t)atoi(dm);
+
   return ms;
 
 }

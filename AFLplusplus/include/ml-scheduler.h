@@ -102,6 +102,13 @@ typedef struct ml_sched_state {
   uint32_t stagnation_revisit_count;  /* Сколько забытых сидов пересмотрели */
   uint64_t ml_total_energy_sum;       /* Суммарный energy всех ML-решений */
 
+  /* Per-seed energy decay */
+  float    decay_rate;                /* Основание decay (default 0.5) */
+  uint32_t decay_half_life;           /* Мутаций без reward до полураспада (default 500) */
+  uint32_t decay_min_energy;          /* Минимальный energy после decay (default 10) */
+  uint64_t total_decayed;             /* Сколько раз decay применился */
+  uint64_t total_reward_resets;       /* Сколько раз decay сбросился по reward */
+
 } ml_sched_state_t;
 
 /* --- Публичный API --- */

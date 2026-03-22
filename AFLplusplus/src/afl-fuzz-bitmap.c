@@ -24,6 +24,7 @@
  */
 
 #include "afl-fuzz.h"
+#include "ml-scheduler.h"
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -659,6 +660,15 @@ u8 __attribute__((hot)) save_if_interesting(afl_state_t *afl, void *mem,
     }
 
     fault = san_fault;
+
+  /* Reset per-seed decay for the parent that produced +cov */
+  if (afl->queue_cur) {
+    afl->queue_cur->energy_at_last_reward = afl->queue_cur->total_energy_given;
+    afl->queue_cur->reward_count++;
+    if (afl->ml_sched) {
+      afl->ml_sched->total_reward_resets++;
+    }
+  }
 
   save_to_queue:
 

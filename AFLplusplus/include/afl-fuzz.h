@@ -240,7 +240,10 @@ struct queue_entry {
       exec_cksum,                       /* Checksum of the execution trace  */
       custom,                           /* Marker for custom mutators       */
       stats_mutated,                    /* stats: # of mutations performed  */
-      total_energy_given;               /* Cumulative energy across session */
+      total_energy_given,               /* Cumulative energy across session */
+      energy_at_last_reward;            /* total_energy_given at last +cov  */
+
+  u32 reward_count;                     /* Times this seed produced +cov    */
 
   u32 tc_ref;                           /* Trace bytes ref count            */
 

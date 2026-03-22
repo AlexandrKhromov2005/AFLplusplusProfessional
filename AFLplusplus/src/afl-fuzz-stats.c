@@ -1554,6 +1554,18 @@ void show_stats_normal(afl_state_t *afl) {
          "     revisited : " cRST "%-20u" bSTG bV "\n",
          stag_clr, stag_txt, ms->stagnation_revisit_count);
 
+    /* Row 4: decay applied | reward resets
+       Left:  "   decay applied: "(18) + %4u%%(5) + 15sp = 38
+       Right: "  reward resets : "(17) + %-20llu(20) = 37 */
+    u32 decay_pct = 0;
+    if (ms->ml_total_decisions > 0) {
+      decay_pct = (u32)(100ULL * ms->total_decayed / ms->ml_total_decisions);
+    }
+    SAYF(bV bSTOP "   decay applied: " cRST "%4u%%"
+         "               " bSTG bV bSTOP
+         "  reward resets : " cRST "%-20llu" bSTG bV "\n",
+         decay_pct, (unsigned long long)ms->total_reward_resets);
+
     SAYF(SET_G1 bSTG bLB bH bSTOP cCYA " decisions: "
          cRST "%-12llu" bSTG bH30 bH20 bH bRB bSTOP RESET_G1 "\n",
          (unsigned long long)total_dec);
