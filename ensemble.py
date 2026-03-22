@@ -7,6 +7,7 @@ ensemble.py — AFL++ Ensemble vs Baseline Orchestrator.
 import argparse
 import csv
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -124,11 +125,83 @@ def load_config(path: str) -> EnsembleConfig:
 
 # ── Запуск инстансов и демонов ──
 
-AFL_DIR = os.path.expanduser("~/projects/AFLplusplusProfessional/AFLplusplus")
+def _find_binary(name: str) -> str:
+    """Найти бинарник по имени: сначала рядом, потом в PATH, потом поиском."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(script_dir, 'AFLplusplus', name),
+        os.path.join(script_dir, name),
+    ]
+    parent = os.path.dirname(script_dir)
+    candidates += [
+        os.path.join(parent, 'AFLplusplus', name),
+        os.path.join(parent, name),
+    ]
+    home = os.path.expanduser('~')
+    candidates += [
+        os.path.join(home, 'AFLplusplusProfessional', 'AFLplusplus', name),
+        os.path.join(home, 'AFLplusplus', name),
+        os.path.join(home, 'projects', 'AFLplusplusProfessional', 'AFLplusplus', name),
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return os.path.abspath(c)
+    found = shutil.which(name)
+    if found:
+        return found
+    raise FileNotFoundError(
+        f"Cannot find '{name}'. Searched:\n"
+        + "\n".join(f"  {c}" for c in candidates)
+        + f"\n  PATH ({name} not in $PATH)"
+    )
+
+
+def _find_ml_daemon_dir() -> str:
+    """Найти директорию содержащую ml_daemon/ пакет."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        script_dir,
+        os.path.dirname(script_dir),
+        os.path.join(os.path.expanduser('~'), 'AFLplusplusProfessional'),
+        os.path.join(os.path.expanduser('~'), 'projects', 'AFLplusplusProfessional'),
+    ]
+    for c in candidates:
+        if os.path.isdir(os.path.join(c, 'ml_daemon')):
+            return c
+    raise FileNotFoundError(
+        "Cannot find ml_daemon/ package. Searched:\n"
+        + "\n".join(f"  {c}/ml_daemon/" for c in candidates)
+    )
+
+
+def _find_ml_model() -> str:
+    """Найти mlf_model_v1.pkl."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    home = os.path.expanduser('~')
+    candidates = [
+        os.path.join(script_dir, 'mlf_model_v1.pkl'),
+        os.path.join(os.path.dirname(script_dir), 'mlf_model_v1.pkl'),
+        os.path.join(home, 'AFLplusplusProfessional', 'mlf_model_v1.pkl'),
+        os.path.join(home, 'projects', 'AFLplusplusProfessional', 'mlf_model_v1.pkl'),
+        '/tmp/mlf_model.pkl',
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return os.path.abspath(c)
+    # Model file is optional — daemon creates it on first training
+    return '/tmp/mlf_model.pkl'
+
+
+_binary_cache = {}
+
+def resolve_binary(name: str) -> str:
+    if name not in _binary_cache:
+        _binary_cache[name] = _find_binary(name)
+    return _binary_cache[name]
 
 
 def build_cmd(config: EnsembleConfig, inst: InstanceConfig) -> list:
-    binary = os.path.join(AFL_DIR, inst.binary)
+    binary = resolve_binary(inst.binary)
     cmd = [binary]
     cmd += ["-i", config.input_dir]
     cmd += ["-o", inst.sync_dir]
@@ -156,17 +229,21 @@ def build_env(config: EnsembleConfig, inst: InstanceConfig) -> dict:
 
 
 def launch_all(config: EnsembleConfig):
-    """Запустить демоны + все 6 инстансов. Возвращает (procs, daemon_procs)."""
+    """Запустить демоны + все 6 инстансов. Возвращает (procs, daemon_procs, stderr_handles)."""
     daemon_procs = []
     procs = {}
+    stderr_handles = {}
+
+    # ── Создать sync_dir (нужно до запуска — для stderr логов) ──
+    os.makedirs(config.output_ml, exist_ok=True)
+    os.makedirs(config.output_baseline, exist_ok=True)
 
     # ── Демоны для mlf-fuzz инстансов ──
     for inst in config.instances:
         if inst.binary == 'mlf-fuzz':
             log_path = inst.env.get('MLF_TRAINING_LOG', f'/tmp/mlf_training_{inst.name}.bin')
             socket_path = f'/tmp/mlf_scheduler_{inst.name}.sock'
-            model_path = os.path.expanduser(
-                '~/projects/AFLplusplusProfessional/mlf_model_v1.pkl')
+            model_path = _find_ml_model()
 
             # Удалить старый сокет если остался
             if os.path.exists(socket_path):
@@ -181,19 +258,18 @@ def launch_all(config: EnsembleConfig):
                 '--model', model_path,
             ]
             print(f"  Daemon for {inst.name}: socket={socket_path}")
+            daemon_stderr_log = os.path.join(config.output_ml, f'daemon_{inst.name}.log')
+            daemon_stderr_fh = open(daemon_stderr_log, 'w')
             dp = subprocess.Popen(
                 daemon_cmd,
-                cwd=os.path.expanduser('~/projects/AFLplusplusProfessional'),
+                cwd=_find_ml_daemon_dir(),
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=daemon_stderr_fh,
                 preexec_fn=os.setsid,
             )
             daemon_procs.append(dp)
+            stderr_handles[f'daemon_{inst.name}'] = daemon_stderr_fh
             time.sleep(1.5)
-
-    # ── Создать sync_dir ──
-    os.makedirs(config.output_ml, exist_ok=True)
-    os.makedirs(config.output_baseline, exist_ok=True)
 
     # ── Фаззеры ──
     # Сначала main, потом secondary (main должен создать sync_dir структуру)
@@ -203,20 +279,24 @@ def launch_all(config: EnsembleConfig):
         cmd = build_cmd(config, inst)
         env = build_env(config, inst)
 
+        stderr_log = os.path.join(inst.sync_dir, f'{inst.name}_stderr.log')
+        stderr_fh = open(stderr_log, 'w')
+
         proc = subprocess.Popen(
             cmd,
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=stderr_fh,
             preexec_fn=os.setsid,
         )
         procs[inst.name] = proc
+        stderr_handles[inst.name] = stderr_fh
         tag = "ML" if inst.group == "ml" else "BL"
         role_flag = "-M" if inst.role == "main" else "-S"
         print(f"  [{tag}] {inst.name} (PID {proc.pid}): {inst.binary} {role_flag}")
         time.sleep(0.5)
 
-    return procs, daemon_procs
+    return procs, daemon_procs, stderr_handles
 
 
 # ── Парсинг fuzzer_stats ──
@@ -711,7 +791,33 @@ def main():
     print(f"  Instances: {len(config.instances)} ({sum(1 for i in config.instances if i.group=='ml')} ML + {sum(1 for i in config.instances if i.group=='baseline')} BL)")
     print(f"{'='*60}\n")
 
-    procs, daemon_procs = launch_all(config)
+    # Auto-discover и показать пути
+    print(f"  Resolving binaries...")
+    for inst in config.instances:
+        try:
+            path = resolve_binary(inst.binary)
+            print(f"    {inst.binary}: {path}")
+        except FileNotFoundError as e:
+            print(f"    {C.RED}ERROR: {e}{C.RESET}")
+            sys.exit(1)
+
+    try:
+        daemon_dir = _find_ml_daemon_dir()
+        print(f"    ml_daemon: {daemon_dir}/ml_daemon/")
+    except FileNotFoundError as e:
+        print(f"    {C.RED}ERROR: {e}{C.RESET}")
+        sys.exit(1)
+
+    try:
+        model = _find_ml_model()
+        print(f"    ML model: {model}")
+    except FileNotFoundError as e:
+        print(f"    {C.RED}ERROR: {e}{C.RESET}")
+        sys.exit(1)
+
+    print()
+
+    procs, daemon_procs, stderr_handles = launch_all(config)
 
     ensemble_start = int(time.time())
     instance_names = [inst.name for inst in config.instances]
@@ -740,6 +846,19 @@ def main():
             all_stats = read_all_stats(config, procs)
             render_table(all_stats, config, ensemble_start)
             logger.log(all_stats, ensemble_start)
+
+            # Показать ошибки мёртвых инстансов
+            for inst in config.instances:
+                proc = procs.get(inst.name)
+                if proc and proc.poll() is not None:
+                    stderr_log = os.path.join(inst.sync_dir, f'{inst.name}_stderr.log')
+                    if os.path.exists(stderr_log) and os.path.getsize(stderr_log) > 0:
+                        with open(stderr_log) as f:
+                            lines = f.readlines()[-5:]
+                        if lines:
+                            print(f"\n  {C.RED}[DEAD: {inst.name}]{C.RESET}")
+                            for line in lines:
+                                print(f"    {C.GRAY}{line.rstrip()}{C.RESET}")
 
             all_dead = all(not s.alive for s in all_stats)
             if all_dead and int(time.time()) - ensemble_start > 15:
@@ -777,6 +896,12 @@ def main():
                         dp.kill()
                     except Exception:
                         pass
+
+        for fh in stderr_handles.values():
+            try:
+                fh.close()
+            except Exception:
+                pass
 
         logger.close()
         print(f"\n  CSV:  {csv_path}")

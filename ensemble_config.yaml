@@ -1,13 +1,13 @@
 # Ensemble vs Baseline configuration
-target: /home/alex/ml_fuzz/fuzz_yyjson
-input: /home/alex/ml_fuzz/input
-dict: /home/alex/ml_fuzz/json.dict
+target: ~/ml_fuzz/fuzz_yyjson
+input: ~/ml_fuzz/input
+dict: ~/ml_fuzz/json.dict
 timeout_ms: 10000
 poll_interval_sec: 5
 
 # Два отдельных sync_dir — группы НЕ шарят корпус между собой
-output_ml: /home/alex/diff_output/ensemble_ml
-output_baseline: /home/alex/diff_output/ensemble_bl
+output_ml: ~/diff_output/ensemble_ml
+output_baseline: ~/diff_output/ensemble_bl
 
 # Общие env для всех инстансов
 common_env:
