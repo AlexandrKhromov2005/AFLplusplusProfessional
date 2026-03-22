@@ -95,6 +95,13 @@ typedef struct ml_sched_state {
   FILE    *training_log;           /* FILE* к training_log.bin */
   uint64_t log_records;            /* кол-во записанных записей */
 
+  /* Stagnation-triggered re-evaluation */
+  uint8_t  stagnation_mode;           /* 1 = в режиме ревизии */
+  uint64_t stagnation_threshold_ms;   /* Порог: мс без находок (default 300000) */
+  uint64_t stagnation_entered_at;     /* Когда вошли в режим (ms) */
+  uint32_t stagnation_revisit_count;  /* Сколько забытых сидов пересмотрели */
+  uint64_t ml_total_energy_sum;       /* Суммарный energy всех ML-решений */
+
 } ml_sched_state_t;
 
 /* --- Публичный API --- */

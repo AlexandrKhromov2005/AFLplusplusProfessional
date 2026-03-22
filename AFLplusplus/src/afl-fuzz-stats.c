@@ -1544,6 +1544,16 @@ void show_stats_normal(afl_state_t *afl) {
          "  cycle stage  : " "%s" "%-20s" bSTG bV "\n",
          ml_pct, afl_pct, stage_clr, stage_txt);
 
+    /* Row 3: stag mode | revisited
+       Left:  "    stag mode  : "(17) + color + %-20s(20) + " "(1) = 38
+       Right: "     revisited : "(17) + %-20u(20) = 37 */
+    const char *stag_clr = ms->stagnation_mode ? cLRD : cLGN;
+    const char *stag_txt = ms->stagnation_mode ? "REVISIT" : "normal";
+
+    SAYF(bV bSTOP "    stag mode  : " "%s" "%-20s " bSTG bV bSTOP
+         "     revisited : " cRST "%-20u" bSTG bV "\n",
+         stag_clr, stag_txt, ms->stagnation_revisit_count);
+
     SAYF(SET_G1 bSTG bLB bH bSTOP cCYA " decisions: "
          cRST "%-12llu" bSTG bH30 bH20 bH bRB bSTOP RESET_G1 "\n",
          (unsigned long long)total_dec);

@@ -1180,6 +1180,54 @@ void update_bitmap_rescore(afl_state_t *afl, struct queue_entry *q, u32 index) {
 
 u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
+  /* === Stagnation detection === */
+  if (afl->ml_sched) {
+
+    ml_sched_state_t *ms = afl->ml_sched;
+    u64 now_ms = get_cur_time();
+    u64 no_find_ms = afl->last_find_time
+        ? (now_ms - afl->last_find_time) : (now_ms - afl->start_time);
+
+    if (!ms->stagnation_mode) {
+
+      if (no_find_ms > ms->stagnation_threshold_ms
+          && afl->queued_items > 100) {
+        ms->stagnation_mode = 1;
+        ms->stagnation_entered_at = now_ms;
+        ms->stagnation_revisit_count = 0;
+      }
+
+    } else {
+
+      /* Выход из stagnation: недавно нашли что-то новое */
+      if (no_find_ms < ms->stagnation_threshold_ms / 10) {
+        ms->stagnation_mode = 0;
+      }
+
+    }
+
+    /* Режим ревизии: забытые сиды получают boost */
+    if (ms->stagnation_mode) {
+
+      u64 avg_energy = (ms->ml_total_decisions > 0)
+          ? (ms->ml_total_energy_sum / ms->ml_total_decisions)
+          : 100;
+
+      if (q->total_energy_given < avg_energy / 4) {
+
+        u32 boost = 400;
+        ms->stagnation_revisit_count++;
+        q->total_energy_given += boost;
+        ms->ml_total_energy_sum += boost;
+        ms->ml_total_decisions++;
+        return boost;
+
+      }
+
+    }
+
+  }
+
   /* === ML Power Scheduler hook === */
   if (afl->ml_sched && afl->ml_sched->daemon_available) {
 
@@ -1223,6 +1271,8 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
       afl->ml_cur_energy_assigned = (u32)ml_energy;
       afl->ml_cur_entry_id        = q->id;
       afl->ml_sched->ml_total_decisions++;
+      afl->ml_sched->ml_total_energy_sum += (u32)ml_energy;
+      q->total_energy_given += (u32)ml_energy;
       return (u32)ml_energy;
 
     }
@@ -1517,6 +1567,7 @@ u32 calculate_score(afl_state_t *afl, struct queue_entry *q) {
 
   }
 
+  q->total_energy_given += perf_score;
   return perf_score;
 
 }

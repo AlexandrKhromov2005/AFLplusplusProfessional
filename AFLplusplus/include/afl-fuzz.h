@@ -239,7 +239,8 @@ struct queue_entry {
       depth,                            /* Path depth                       */
       exec_cksum,                       /* Checksum of the execution trace  */
       custom,                           /* Marker for custom mutators       */
-      stats_mutated;                    /* stats: # of mutations performed  */
+      stats_mutated,                    /* stats: # of mutations performed  */
+      total_energy_given;               /* Cumulative energy across session */
 
   u32 tc_ref;                           /* Trace bytes ref count            */
 

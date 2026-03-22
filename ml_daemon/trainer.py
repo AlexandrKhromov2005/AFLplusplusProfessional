@@ -31,6 +31,7 @@ class OnlineTrainer:
         self._log_offset = 0          # байтовый offset в файле
         self._all_records = []         # все записи для базовой модели
         self._records_since_refit = 0  # новые записи с последнего refit
+        self._last_new_edge_time = time.time()  # stagnation tracking
 
     def _maybe_refit_base(self) -> None:
         """Переобучить базовую модель если накопилось достаточно данных."""
@@ -73,8 +74,25 @@ class OnlineTrainer:
                 self._all_records.extend(new_records)
                 self._records_since_refit += len(new_records)
 
+                # Обновить таймер стагнации
+                for r in new_records:
+                    if r.new_edges > 0:
+                        self._last_new_edge_time = time.time()
+
                 # Онлайн-адаптация на новых данных
                 X_new, y_new = records_to_arrays(new_records)
+
+                # Stagnation-aware reward shaping: бонус забытым сидам
+                elapsed = time.time() - self._last_new_edge_time
+                if elapsed > 300:  # 5 мин без новых edges
+                    energies = np.array([r.energy_assigned for r in new_records],
+                                        dtype=np.float32)
+                    median_e = np.median(energies) if len(energies) > 0 else 100
+                    # Забытые сиды (energy < median/2) получают бонус reward,
+                    # чтобы модель училась давать им больше энергии
+                    bonus = np.where(energies < median_e / 2, 5.0, 0.0)
+                    y_new = y_new + bonus
+
                 self.model.update_online(X_new, y_new)
 
                 # Обновить сервер (атомарно)

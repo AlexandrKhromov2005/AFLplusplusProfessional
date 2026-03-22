@@ -79,6 +79,17 @@ ml_sched_state_t *ml_sched_init(const char *socket_path, const char *log_path) {
 
   }
 
+  /* Stagnation re-evaluation defaults */
+  ms->stagnation_mode = 0;
+  ms->stagnation_threshold_ms = 300000ULL;  /* 5 минут */
+  ms->stagnation_entered_at = 0;
+  ms->stagnation_revisit_count = 0;
+  ms->ml_total_energy_sum = 0;
+
+  /* Env override: MLF_STAGNATION_SEC */
+  const char *st = getenv("MLF_STAGNATION_SEC");
+  if (st) ms->stagnation_threshold_ms = (uint64_t)atoi(st) * 1000ULL;
+
   return ms;
 
 }
