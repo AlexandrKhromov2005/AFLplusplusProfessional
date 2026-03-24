@@ -26,13 +26,15 @@ class InstanceConfig:
     role: str             # "main" или "secondary"
     group: str            # "ml" или "baseline"
     sync_dir: str         # путь к sync_dir этой группы
+    input_dir: str        # путь к input корпусу этой группы
     env: dict = field(default_factory=dict)
 
 
 @dataclass
 class EnsembleConfig:
     target: str
-    input_dir: str
+    input_ml: str
+    input_baseline: str
     output_ml: str
     output_baseline: str
     dict_path: Optional[str]
@@ -90,6 +92,10 @@ def load_config(path: str) -> EnsembleConfig:
     output_ml = os.path.expanduser(raw['output_ml'])
     output_bl = os.path.expanduser(raw['output_baseline'])
 
+    # Раздельные input корпуса, с fallback на старое поле 'input'
+    input_ml = os.path.expanduser(raw.get('input_ml', raw.get('input', '')))
+    input_bl = os.path.expanduser(raw.get('input_baseline', raw.get('input', '')))
+
     for inst in raw.get('ml_instances', []):
         instances.append(InstanceConfig(
             name=inst['name'],
@@ -97,6 +103,7 @@ def load_config(path: str) -> EnsembleConfig:
             role=inst['role'],
             group='ml',
             sync_dir=output_ml,
+            input_dir=input_ml,
             env=inst.get('env', {}),
         ))
 
@@ -107,12 +114,14 @@ def load_config(path: str) -> EnsembleConfig:
             role=inst['role'],
             group='baseline',
             sync_dir=output_bl,
+            input_dir=input_bl,
             env=inst.get('env', {}),
         ))
 
     return EnsembleConfig(
         target=os.path.expanduser(raw['target']),
-        input_dir=os.path.expanduser(raw['input']),
+        input_ml=input_ml,
+        input_baseline=input_bl,
         output_ml=output_ml,
         output_baseline=output_bl,
         dict_path=os.path.expanduser(raw['dict']) if raw.get('dict') else None,
@@ -203,7 +212,7 @@ def resolve_binary(name: str) -> str:
 def build_cmd(config: EnsembleConfig, inst: InstanceConfig) -> list:
     binary = resolve_binary(inst.binary)
     cmd = [binary]
-    cmd += ["-i", config.input_dir]
+    cmd += ["-i", inst.input_dir]
     cmd += ["-o", inst.sync_dir]
 
     if inst.role == "main":
@@ -786,6 +795,8 @@ def main():
     print(f"\n{'='*60}")
     print(f"  AFL++ Ensemble vs Baseline Orchestrator")
     print(f"  Target:   {os.path.basename(config.target)}")
+    print(f"  ML input: {config.input_ml}")
+    print(f"  BL input: {config.input_baseline}")
     print(f"  ML sync:  {config.output_ml}")
     print(f"  BL sync:  {config.output_baseline}")
     print(f"  Instances: {len(config.instances)} ({sum(1 for i in config.instances if i.group=='ml')} ML + {sum(1 for i in config.instances if i.group=='baseline')} BL)")

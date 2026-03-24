@@ -1,42 +1,39 @@
-# Ensemble vs Baseline configuration
 target: ~/ml_fuzz/fuzz_yyjson
-input: ~/ml_fuzz/input
 dict: ~/ml_fuzz/json.dict
 timeout_ms: 10000
 poll_interval_sec: 5
 
-# Два отдельных sync_dir — группы НЕ шарят корпус между собой
-output_ml: ~/diff_output/ensemble_ml
-output_baseline: ~/diff_output/ensemble_bl
+input_ml: ~/maxim_fuzz/ml_corpus/
+input_baseline: ~/ml_fuzz/input
 
-# Общие env для всех инстансов
+output_ml: ~/diff_output/ensemble_v2_ml
+output_baseline: ~/diff_output/ensemble_v2_bl
+
 common_env:
   AFL_SKIP_CPUFREQ: "1"
   AFL_NO_AFFINITY: "1"
   AFL_DISABLE_TRIM: "1"
 
-# ML Ensemble (3 инстанса, шарят корпус через output_ml)
 ml_instances:
   - name: exploit
     binary: mlf-fuzz
     role: main
     env:
       MLF_STAGNATION_SEC: "300"
-      MLF_TRAINING_LOG: "/tmp/mlf_training_exploit.bin"
+      MLF_TRAINING_LOG: "/tmp/mlf_training_v2_exploit.bin"
 
   - name: explore
     binary: mlf-fuzz
     role: secondary
     env:
       MLF_STAGNATION_SEC: "0"
-      MLF_TRAINING_LOG: "/tmp/mlf_training_explore.bin"
+      MLF_TRAINING_LOG: "/tmp/mlf_training_v2_explore.bin"
 
   - name: havoc
     binary: afl-fuzz
     role: secondary
     env: {}
 
-# Baseline (3 инстанса, шарят корпус через output_baseline)
 baseline_instances:
   - name: base-M
     binary: afl-fuzz
